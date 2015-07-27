@@ -147,7 +147,10 @@ class Radix(object):
         return Radix(lambda thing: self.accessor(thing).__format__())
 
     def __hash__(self):
-        return Radix(lambda thing: self.accessor(thing).__hash__())
+        return hash(self.accessor)
+
+    def __reduce__(self):
+        return (Radix, (self.accessor, ))
 
     def __dir__(self):
         return Radix(lambda thing: self.accessor(thing).__dir__())
