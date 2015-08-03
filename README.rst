@@ -4,6 +4,17 @@ dream
 
 Dreamy data processing
 
+Goals
+=====
+
+* Chained methods with functional flavor: ``dream.of(range(4)).map().filter().etc``
+* Succinct creation of partial functions: ``inc = dream.map(lambda n: n + 1)``
+* Multicore by default, simple single-core specification
+
+And the stretch goal:
+
+* Succinct simple function definition for dreams: ``from dream import dream, n; dream.map(n + 1)``
+
 Radixes
 =======
 
