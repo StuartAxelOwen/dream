@@ -1,8 +1,6 @@
-*****
-dream
-*****
+.. image:: https://github.com/StuartAxelOwen/dream/raw/master/assets/dream.png
 
-Dreamy data processing
+Dream is a natural abstraction for task DAGs.
 
 Goals
 =====
