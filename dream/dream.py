@@ -1,105 +1,61 @@
-__author__ = 'stuart'
+''' ...dream '''
+__author__ = 'stuartaxelowen'
 
 from dask import bag
+import toolz
 import itertools
-from toolz import partition_all
-import math
+import sys
 
-_map = map
-_filter = filter
-
-dreams = ('sheep-number-%d' % i for i in itertools.count(1))
-
-def of(source):
-    return Dream.of(source)
-
-def map(fn):
-    return EmptyDream.map(fn)
-
-def filter(pred):
-    return EmptyDream.filter(pred)
-
-def to(fn):
-    def toer(source):
-        return Dream.of(source).to(fn)
-    return toer
+dreams = ('dream-%d' % i for i in itertools.count(1))
 
 
-class Nothing(object):
-    pass
+class Nothing(object): pass  # Careful - `Nothing` is truthy
 
 
-class EmptyDream(object):
-    @staticmethod
-    def partial_of(operation):
-        return PartialDream.partial_of(operation)
-
-    @classmethod
-    def map(cls, fn):
-        return cls.partial_of([('map', fn)])
-
-    @classmethod
-    def filter(cls, pred):
-        return cls.partial_of([('filter', pred)])
-
-
-class PartialDream(object):
-    @staticmethod
-    def of(stream):
-        return Dream.of(stream)
-
-    @staticmethod
-    def partial_of(operation):
-        return PartialDream(operation)
-
-    def __init__(self, operations):
-        self.operations = operations
-
-    def __call__(self, stream):
-        _dream = self.of(stream)
-        for method, fn in self.operations:
-            if fn is not Nothing:
-                _dream = getattr(_dream, method)(fn)
-            else:
-                _dream = getattr(_dream, method)()
-        return _dream
-
-    def map(self, fn):
-        return self.partial_of(self.operations + [('map', fn)])
-
-    def filter(self, fn):
-        return self.partial_of(self.operations + [('filter', fn)])
-
-    def to(self, fn):
-        return self.partial_of(self.operations + [('to', fn)])
-
-    def collect(self):
-        return self.partial_of(self.operations + [('collect', Nothing)])
+def dfs_first_nothing_path(dsk):
+    ''' Returns a list of dict keys leading to the first nothing '''
+    # TODO: Consider changing this to "find deepest Nothing"?
+    for k, v in dsk.items():
+        if isinstance(v, dict):
+            result = dfs_first_nothing_path(v)
+            if isinstance(result, list):
+                return [k] + result
+        elif v is Nothing:
+            return [k]
+    return None
 
 
 class Dream(bag.Bag):
-    @staticmethod
-    def _bag(dsk, name, npartitions):
-        return Dream(dsk, name, npartitions)
+    def __init__(self, dsk=None, name=None, npartitions=1):
+        name = name or next(dreams)
+        super(Dream, self).__init__(dsk or {(name, 0): Nothing}, name, npartitions)
 
-    @classmethod
-    def of(cls, source, partition_size=None, npartitions=None):
-        source = list(source)
-        if npartitions and not partition_size:
-            partition_size = int(math.ceil(len(source) / npartitions))
-        if npartitions is None and partition_size is None:
-            if len(source) < 100:
-                partition_size = 1
-            else:
-                partition_size = int(len(source) / 100)
+    def __call__(self, thing):
+        if self.dask.get(self.name, Nothing) is not Nothing:
+            raise Exception("Can't call dream that already has a source")
+        return self.of(thing)
 
-        parts = list(partition_all(partition_size, source))
-        name = next(dreams)
-        d = dict(((name, i), part) for i, part in enumerate(parts))
-        return cls._bag(d, name, len(d))
+    def of(self, iterable, *iterables):
+        pprint(self.dask)
+        if self.dask.get(self.name, Nothing) is not Nothing:
+            raise Exception("Can't call of on dream that already has a source")
 
-    def collect(self):
-        return self.compute()
+        new_dask = self.dask
+        for _iterable in (iterable,) + iterables:
+            input_path = dfs_first_nothing_path(self.dask)
+            new_dask = toolz.update_in(self.dask, input_path, lambda _: tuple(_iterable))
+            print(self.name)
 
-    def to(self, fn):
+        # TODO make it partition properly
+        return type(self)(new_dask, self.name, npartitions=self.npartitions)
+
+    def of_files(self, filenames, chunkbytes=None):
+        return self.of(bag.from_filenames(filenames, chunkbytes))
+
+    def into(self, fn):
+        if isinstance(fn, Dream):
+            new_dask = toolz.merge(self.dask, fn.dask)
+            input_path = dfs_first_nothing_path(fn.dask)
+            new_dask = toolz.update_in(new_dask, input_path, lambda _: (self.name, 0))
+            return type(self)(new_dask, fn.name, npartitions=self.npartitions)
         return fn(self)
