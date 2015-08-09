@@ -15,8 +15,8 @@ Goals
 * Succinct creation of partial functions: 
   ::
   
-      inc = dream.map(lambda n: n + 1); evens = dream.filter(lambda n: n % 2 == 0)
-      
+      inc = dream.map(lambda n: n + 1)
+      evens = dream.filter(lambda n: n % 2 == 0)
       
 * Composable into more complex graphs: 
   ::
