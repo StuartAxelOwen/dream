@@ -1,7 +1,8 @@
 __author__ = 'stuart'
 
 import sys
-from .dream3 import Dream
+from .dream import Dream
+
 
 class EmptyDream(object):
     def __getattribute__(self, name):
