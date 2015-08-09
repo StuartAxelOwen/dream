@@ -28,4 +28,4 @@ And the stretch goal:
 * Succinct simple function definition for dreams: 
   ::
       
-      from dream import dream, n; dream.map(n + 1)``
+      from dream import dream, n; dream.map(n + 1)
