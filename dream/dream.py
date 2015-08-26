@@ -2,6 +2,7 @@
 __author__ = 'stuartaxelowen'
 
 from dask import bag
+from dask.async import get_sync
 import toolz
 import itertools
 import multiprocessing
@@ -39,10 +40,13 @@ class Dream(bag.Bag):
                 dsk[(name, i)] = tuple()
         super(Dream, self).__init__(dsk, name, partitions)
 
-    def __call__(self, thing):
-        if self.dask.get(self.name, Empty) is not Empty:
+    def __call__(self, thing, *things, multiprocessing=False):
+        if not self.has_empties:
             raise Exception("Can't call dream that already has a source")
-        return self.of(thing)
+        result = self
+        for _thing in (thing, ) + things:
+            result = result.of(_thing)
+        return result.compute(multiprocessing=multiprocessing)
 
     def of(self, iterable):
         if self.dask.get(self.name, Empty) is not Empty:
@@ -51,9 +55,12 @@ class Dream(bag.Bag):
         if not isinstance(iterable, bag.Bag):
             iterable = Dream(*bag.from_sequence(iterable, npartitions=NUM_CORES)._args)
 
-        if set(self.dask.values()) == {Empty}:
-            # Case for empty dreams - don't want to
-            return iterable
+        try:
+            if set(self.dask.values()) == {Empty}:
+                # Case for empty dreams - don't want to add unnecessary layers
+                return iterable
+        except TypeError: # Unhashable type -> not empty
+            pass
 
         return _merge_dreams(iterable, self)
 
@@ -61,10 +68,39 @@ class Dream(bag.Bag):
         return Dream(*bag.from_filenames(filenames, chunkbytes)._args)
 
     def into(self, fn):
+        if self.has_empties:
+            return TerminatedDream(self, fn)# TODO: how do I make this partial
         return _merge_dreams(self, fn) if isinstance(fn, Dream) else fn(self)
 
-    def count(self):
-        return super(Dream, self).count().compute()
+    def count(self, multiprocessing=False):
+        return super(Dream, self).count().compute(multiprocessing=multiprocessing)
+
+    def join(self, other=None, on=None, on_other=None):
+        other = other or Dream()
+        if not callable(on):
+            raise ValueError("Must specify a callable `on` parameter for join")
+        return super(Dream, self).join(other, on, on_other)
+
+    def compute(self, multiprocessing=False, **kwargs):
+        if multiprocessing:
+            return super(Dream, self).compute(**kwargs)
+        return super(Dream, self).compute(get=get_sync, **kwargs)
+
+    @property
+    def has_empties(self):
+        return dfs_first_empty_path(self.dask) is not None
+
+
+class TerminatedDream(object):
+    def __init__(self, dream, fn):
+        self.dream = dream
+        self.terminator = fn
+
+    def __call__(self, thing, *things):
+        return self.terminator(self.dream(thing, *things))
+
+    def of(self, thing):
+        return self.dream.of(thing).into(self.terminator)
 
 
 def _merge_dreams(first, second):
